@@ -1,0 +1,91 @@
+- name: Walmart cinder stanza
+  hosts: localhost
+  gather_facts: no
+  vars:
+    - array_ip: 1.2.3.4
+    - cinder_file: /etc/cinder/cinder.conf
+    - protocol: iSCSI
+    - cinder_password: pureuser
+  collections:
+  - purestorage.flasharray
+  tasks:
+    - name: Create admin API token
+      purefa_token:
+        name: pureuser
+        password: pureuser
+        fa_url: "{{ array_ip }}"
+      register: api_token
+
+    - name: Array name
+      purefa_info:
+        fa_url: "{{ array_ip }}"
+        api_token: "{{ api_token['purefa_token'] }}"
+      register: array_info
+
+    - set_fact:
+        array_name: "{{ array_info['purefa_info']['default']['array_name'] }}"
+
+    - name: Create cinder user and token
+      purefa_user:
+        name: cinder
+        password: "{{ cinder_password }}"
+        role: array_admin
+        api: true
+        fa_url: "{{ array_ip }}"
+        api_token: "{{ api_token['purefa_token'] }}"
+      register: cinder_user
+
+    - set_fact:
+        cinder_api: "{{ cinder_user['user_info']['user_api'] }}"
+      when: cinder_user['user_info'] is defined
+
+    - name: Get Cinder API token (if already exists)
+      purefa_token:
+        name: cinder
+        password: "{{ cinder_password }}"
+        fa_url: "{{ array_ip }}"
+      register: cinder_token
+      when: cinder_user['user_info'] is undefined
+
+    - set_fact:
+        cinder_api: "{{ cinder_token['purefa_token'] }}"
+      when: cinder_user['user_info'] is undefined
+
+    - name: check if rules file exists
+      stat: 
+        path: "{{ cinder_file }}"
+      register: cinder_conf
+
+    - name: Check for existing array in conf file (cat)
+      shell: "grep {{ array_ip }} {{ cinder_file }}"
+      register: array_exists
+      when: cinder_conf.stat.exists == True
+      ignore_errors: True
+
+    - name: Create stanza file
+      template:
+        src: cinder.conf.j2
+        dest: /tmp/cinder.conf.{{ array_name }}
+      when: cinder_api is defined and array_exists.stdout == ""
+
+    - name: Append new stanze to Cinder configuration
+      shell: cat /tmp/cinder.conf.{{ array_name }} >> {{ cinder_file }}
+      when: cinder_conf.stat.exists == True  and array_exists.stdout == ""
+
+    - name: Cleanup temp file
+      file:
+        path: /tmp/cinder.conf.{{ array_name }}
+        state: absent
+      when: cinder_api is defined and array_exists.stdout == ""
+
+    - name: Find current enabled_backends
+      shell: "grep enabled_backends {{ cinder_file }}"
+      register: backend_line
+      when: cinder_conf.stat.exists == True
+      ignore_errors: True
+
+    - name: Add array to enabled_backends
+      shell: "sed -i 's/{{ backend_line.stdout }}/{{ backend_line.stdout }},{{ array_name }}/' {{ cinder_file }}"
+      when: cinder_conf.stat.exists == True  and array_exists.stdout == ""
+      args:
+        warn: false
