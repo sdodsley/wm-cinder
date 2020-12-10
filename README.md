@@ -7,7 +7,7 @@ Copy `purefa_token.py` to the  `modules` directory of the Pure Storage Ansible C
 cp purefa_token.py  ~/.ansible/collections/purestorage/flasharray/plugins/modules/
 ``` 
 
-Copy playbook `walmart.yaml` and template file `cinder.conf.j2` to your working directory.
+Copy playbook `update_cinder.yaml` and template file `cinder.conf.j2` to your working directory.
 
 Operation
 =========
@@ -17,7 +17,7 @@ Once created all the necessary additions will be made to the Cinder configuratio
 become a configured backend.
 
 ```bash
-ansible-playbook walmart.yaml -e "array_ip=<mgmt_vip> protocol=<type> cinder_file=<filename>"
+ansible-playbook update_cinder.yaml -e "array_ip=<mgmt_vip> protocol=<type> cinder_file=<filename>"
 ```
 
 where the above pameters are defined by:
